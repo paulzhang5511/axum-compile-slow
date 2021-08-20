@@ -24,7 +24,7 @@ async fn main() {
     if std::env::var("RUST_LOG").is_err() {
         std::env::set_var(
             "RUST_LOG",
-            "feiyuan_web=debug,tower_http=debug,tokio_postgres=debug",
+            "axum_compile_slow=debug,tower_http=debug,tokio_postgres=debug",
         )
     }
 
