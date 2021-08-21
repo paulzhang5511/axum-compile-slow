@@ -6,7 +6,7 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-axum = { git = "https://github.com/tokio-rs/axum.git", rev="1bda638", features = ["multipart"] }
+axum = { git = "https://github.com/tokio-rs/axum.git", rev="0d8f8b7", features = ["multipart"] }
 http = "0.2"
 tokio = { version = "1", features = ["full"] }
 tower = { version = "0.4", features = ["util", "timeout", "limit", "load-shed", "steer", "filter"] }
