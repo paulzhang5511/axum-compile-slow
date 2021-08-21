@@ -15,7 +15,7 @@ use tower_http::trace::TraceLayer;
 use tracing::debug;
 
 use crate::config::Config;
-use axum::{handler::get, handler::post, AddExtensionLayer, Router};
+use axum::{handler::get, handler::post, handler::Handler, AddExtensionLayer, Router};
 
 mod config;
 
@@ -34,16 +34,6 @@ async fn main() {
         .merge(Toml::file("Config.toml"))
         .extract()
         .unwrap();
-
-    let pg_config = tokio_postgres::Config::from_str(&config.global.db_url).unwrap();
-    let mgr = deadpool_postgres::Manager::from_config(
-        pg_config,
-        tokio_postgres::NoTls,
-        deadpool_postgres::ManagerConfig {
-            recycling_method: deadpool_postgres::RecyclingMethod::Fast,
-        },
-    );
-    let pool = Pool::new(mgr, config.global.pool_size);
 
     let app = Router::new()
         .nest(
@@ -67,68 +57,50 @@ async fn main() {
                     ))
                 }),
         )
-        .nest(
-            "/api",
-            Router::new()
-                .route("/pay/pay_params", post(handle))
-                .route("/pay/transfer_info", post(handle))
-                .route("/upload/image", post(handle))
-                .nest(
-                    "/user",
-                    Router::new()
-                        .route("/list", get(handle))
-                        .route("/create", post(handle))
-                        .route("/login", post(handle))
-                        .route("/info", get(handle))
-                        .route("/update_password", get(handle))
-                        .route("/money", get(handle)),
-                )
-                .nest(
-                    "/order",
-                    Router::new()
-                        .route("/create", post(handle))
-                        .route("/all", get(handle))
-                        .route("/list", get(handle)),
-                )
-                .nest(
-                    "/product",
-                    Router::new()
-                        .route("/list", get(handle))
-                        .route("/home", get(handle))
-                        .route("/create", post(handle))
-                        .route("/update/:id", post(handle))
-                        .route("/delete", post(handle))
-                        .route("/detail", get(handle))
-                        .route("/earnings/create", post(handle))
-                        .route("/earnings/delete", post(handle))
-                        .route("/earnings/find", get(handle))
-                        .boxed(),
-                )
-                .layer(AsyncFilterLayer::new(map_request))
-                .layer(AndThenLayer::new(map_response))
-                .handle_error(|error: BoxError| {
-                    if error.is::<tower::timeout::error::Elapsed>() {
-                        Ok::<_, Infallible>((
-                            StatusCode::REQUEST_TIMEOUT,
-                            "request took too long".to_string(),
-                        ))
-                    } else {
-                        tracing::debug!("{:?}", error);
-                        Ok::<_, Infallible>((
-                            StatusCode::INTERNAL_SERVER_ERROR,
-                            "Unhandled internal error".to_string(),
-                        ))
-                    }
-                }),
-        )
-        .layer(MapResponseLayer::new(map_404))
+        .route("/pay/pay_params", post(handle))
+        .route("/pay/transfer_info", post(handle))
+        .route("/upload/image", post(handle))
+        .route("/user/list", get(handle))
+        .route("/user/create", post(handle))
+        .route("/user/login", post(handle))
+        .route("/user/info", get(handle))
+        .route("/update_password", get(handle))
+        .route("/money", get(handle))
+        .route("/order/create", post(handle))
+        .route("/order/all", get(handle))
+        .route("/order/list", get(handle))
+        .route("/product/list", get(handle))
+        .route("/product/home", get(handle))
+        .route("/product/create", post(handle))
+        .route("/product/update/:id", post(handle))
+        .route("/product/delete", post(handle))
+        .route("/product/detail", get(handle))
+        .route("/product/earnings/create", post(handle))
+        .route("/product/earnings/delete", post(handle))
+        .route("/product/earnings/find", get(handle))
+        .or(map_404.into_service())
+        .layer(AsyncFilterLayer::new(map_request))
+        .layer(AndThenLayer::new(map_response))
         .layer(
             ServiceBuilder::new()
                 .timeout(Duration::from_secs(15))
                 .layer(TraceLayer::new_for_http())
-                .layer(AddExtensionLayer::new(pool))
                 .into_inner(),
-        );
+        )
+        .handle_error(|error: BoxError| {
+            if error.is::<tower::timeout::error::Elapsed>() {
+                Ok::<_, Infallible>((
+                    StatusCode::REQUEST_TIMEOUT,
+                    "request took too long".to_string(),
+                ))
+            } else {
+                tracing::debug!("{:?}", error);
+                Ok::<_, Infallible>((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Unhandled internal error".to_string(),
+                ))
+            }
+        });
     // .check_infallible();
     let addr: SocketAddr = config.global.address.parse::<SocketAddr>().unwrap();
     debug!("listening on {}", addr);
@@ -138,19 +110,8 @@ async fn main() {
         .unwrap();
 }
 
-fn map_404(response: Response<BoxBody>) -> Response<BoxBody> {
-    if response.status() == StatusCode::NOT_FOUND
-        || response.status() == StatusCode::METHOD_NOT_ALLOWED
-    {
-        let json = r#"{"code": 0, "msg": "not found"}"#;
-        return Response::builder()
-            .status(StatusCode::NOT_FOUND)
-            .header("Content-Type", "application/json")
-            .body(box_body(Body::from(json)))
-            .unwrap();
-    }
-
-    response
+async fn map_404() -> &'static str {
+    "not found"
 }
 
 async fn map_request(req: Request<Body>) -> Result<Request<Body>, BoxError> {

@@ -1,4 +1,4 @@
 [global]
-address = "0.0.0.0:8000"
+address = "127.0.0.1:8000"
 db_url = "postgres://postgres:123456@localhost/demo"
 pool_size = 5
